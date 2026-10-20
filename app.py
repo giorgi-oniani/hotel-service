@@ -5,10 +5,9 @@ from flask import Flask, Response, redirect, render_template_string, request, ur
 
 app = Flask(__name__)
 
-# ავტორიზაციის მონაცემები
+# ავტორიზაცია
 SUPER_USER = "superadmin"
 SUPER_PASS = "super123"
-
 MANAGER_USER = "admin"
 MANAGER_PASS = "hotel123"
 
@@ -23,17 +22,17 @@ def check_manager_auth(username, password):
 
 def authenticate_super():
   return Response(
-      "მთავარი ადმინის ავტორიზაცია სავალდებულოა.",
+      "Unauthorized",
       401,
-      {"WWW-Authenticate": 'Basic realm="Super Admin Login Required"'},
+      {"WWW-Authenticate": 'Basic realm="Super Admin Required"'},
   )
 
 
 def authenticate_manager():
   return Response(
-      "მენეჯერის ავტორიზაცია სავალდებულოა.",
+      "Unauthorized",
       401,
-      {"WWW-Authenticate": 'Basic realm="Manager Login Required"'},
+      {"WWW-Authenticate": 'Basic realm="Manager Required"'},
   )
 
 
@@ -91,7 +90,7 @@ def init_db():
 
 init_db()
 
-# მრავალენოვანი ლექსიკონი
+# 8 ენის ლექსიკონი
 TRANSLATIONS = {
     "es": {
         "title": "Servicio de Habitaciones",
@@ -209,7 +208,7 @@ TRANSLATIONS = {
         "success_msg": "تم إرسال الطلب بنجاح!",
         "placeholder": "مثال: أتاج مناشف إضافية...",
         "send_btn": "إرسال الطلب",
-        "feedback_title": "قيم إקامتك",
+        "feedback_title": "قيم إقامتك",
         "q1": "1. كيف تقيم سرعة الخدمة؟",
         "q2": "2. ما مدى راحة ونظافة الغرفة؟",
         "q3": "3. هل ترشحنا لأصدقائك؟",
@@ -239,6 +238,7 @@ TRANSLATIONS = {
     },
 }
 
+# სტუმრის მხარე (PWA მზაობით)
 USER_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
@@ -250,7 +250,6 @@ USER_TEMPLATE = """
     <meta name="theme-color" content="#4f46e5">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Hotel Service">
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col justify-between">
@@ -332,20 +331,11 @@ USER_TEMPLATE = """
             </form>
         {% endif %}
     </div>
-    <footer class="text-center py-6 text-xs text-slate-400">
-        Smart Hotel Service &copy; 2026
-    </footer>
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js')
-            .then(() => console.log('PWA Service Worker registered successfully.'))
-            .catch((err) => console.log('Service Worker registration failed: ', err));
-        }
-    </script>
 </body>
 </html>
 """
 
+# მენეჯერის პანელი (QR გენერატორითა და შეკვეთების მართვით)
 MANAGER_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ka">
@@ -354,8 +344,8 @@ MANAGER_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>მენეჯერის პანელი</title>
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#4f46e5">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 </head>
 <body class="bg-slate-100 min-h-screen p-4 md:p-8">
     <div class="max-w-6xl mx-auto">
@@ -363,10 +353,11 @@ MANAGER_TEMPLATE = """
             <h1 class="text-3xl font-bold text-slate-900">🏨 მენეჯერის პანელი</h1>
             <div class="flex gap-2">
                 <a href="/super-admin" class="bg-slate-800 text-white text-xs px-3 py-2 rounded-xl font-medium">სუპერ ადმინი</a>
-                <span class="text-sm bg-emerald-100 text-emerald-800 font-medium px-3 py-1 rounded-xl flex items-center">აქტიურია</span>
+                <button onclick="generateQRs()" class="bg-indigo-600 text-white text-xs px-3 py-2 rounded-xl font-medium">🖨️ QR კოდების გენერაცია</button>
             </div>
         </div>
-        <div class="bg-white shadow-md rounded-2xl overflow-hidden p-4">
+
+        <div class="bg-white shadow-md rounded-2xl overflow-hidden p-4 mb-8">
             <h2 class="text-lg font-bold text-slate-800 mb-4">შემოსული შეკვეთები</h2>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -407,11 +398,41 @@ MANAGER_TEMPLATE = """
                 </table>
             </div>
         </div>
+
+        <!-- QR კოდების გამოსატანი ზონა -->
+        <div id="qr-container" class="bg-white shadow-md rounded-2xl p-6 hidden">
+            <h2 class="text-lg font-bold text-slate-800 mb-4">ოთახების QR კოდები (დასაბეჭდად)</h2>
+            <div id="qr-grid" class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center"></div>
+        </div>
     </div>
+
+    <script>
+        function generateQRs() {
+            const container = document.getElementById('qr-container');
+            const grid = document.getElementById('qr-grid');
+            container.classList.remove('hidden');
+            grid.innerHTML = '';
+            
+            const hotelId = "tbilisi-hotel"; // შეგიძლიათ დინამიკურადაც შეიცვალოს
+            for (let i = 101; i <= 108; i++) {
+                const roomDiv = document.createElement('div');
+                roomDiv.className = 'p-4 border border-slate-200 rounded-xl flex flex-col items-center bg-slate-50';
+                roomDiv.innerHTML = `<p class="font-bold mb-2 text-slate-700">ოთახი ${i}</p><canvas id="qr-${i}"></canvas>`;
+                grid.appendChild(roomDiv);
+
+                const roomUrl = `${window.location.origin}/hotel/${hotelId}/room/${i}`;
+                QRCode.toCanvas(document.getElementById(`qr-${i}`), roomUrl, { width: 120 }, function (error) {
+                    if (error) console.error(error);
+                });
+            }
+            window.print();
+        }
+    </script>
 </body>
 </html>
 """
 
+# სუპერ ადმინის პანელი
 SUPER_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ka">
@@ -478,7 +499,6 @@ def manifest():
               "src": "https://cdn-icons-png.flaticon.com/512/3076/3076137.png",
               "sizes": "512x512",
               "type": "image/png",
-              "purpose": "any maskable",
           }
       ],
   }
@@ -490,16 +510,10 @@ def manifest():
 
 @app.route("/sw.js")
 def service_worker():
-  sw_code = """
-    self.addEventListener('install', (e) => {
-        console.log('Service Worker installed');
-    });
-    self.addEventListener('fetch', (e) => {
-        e.respondWith(
-            fetch(e.request).catch(() => caches.match(e.request))
-        );
-    });
-    """
+  sw_code = (
+      "self.addEventListener('fetch', (e) => { e.respondWith(fetch(e.request));"
+      " });"
+  )
   return Response(sw_code, mimetype="application/javascript")
 
 
@@ -563,7 +577,6 @@ def manager_panel():
   )
   reqs = cursor.fetchall()
   conn.close()
-
   return render_template_string(MANAGER_TEMPLATE, requests=reqs)
 
 
@@ -591,7 +604,6 @@ def super_admin_panel():
   )
   feedbacks = cursor.fetchall()
   conn.close()
-
   return render_template_string(SUPER_TEMPLATE, feedbacks=feedbacks)
 
 
